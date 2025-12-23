@@ -1,6 +1,5 @@
 streamlit
 pandas
-pillow
-opencv-python
 openpyxl
+pillow
 numpy

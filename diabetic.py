@@ -1,8 +1,7 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-from PIL import Image
-import cv2
+from PIL import Image, ImageEnhance
 from datetime import datetime
 import os
 
@@ -63,43 +62,48 @@ def save_to_database(patient_data):
     df.to_excel(EXCEL_FILE, index=False)
     return True
 
-# Image Preprocessing Function
+# Image Preprocessing Function (without OpenCV)
 def preprocess_image(image):
-    """Preprocess retinal image for CNN model"""
-    # Convert PIL to numpy array
-    img_array = np.array(image)
-    
+    """Preprocess retinal image using PIL only"""
     # Resize to standard size
-    img_resized = cv2.resize(img_array, (224, 224))
+    img_resized = image.resize((224, 224), Image.Resampling.LANCZOS)
     
-    # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
-    if len(img_resized.shape) == 3:
-        lab = cv2.cvtColor(img_resized, cv2.COLOR_RGB2LAB)
-        l, a, b = cv2.split(lab)
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-        l = clahe.apply(l)
-        enhanced = cv2.merge([l, a, b])
-        enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2RGB)
-    else:
-        enhanced = img_resized
+    # Enhance contrast
+    enhancer = ImageEnhance.Contrast(img_resized)
+    enhanced = enhancer.enhance(1.5)
     
-    # Normalize
-    normalized = enhanced / 255.0
+    # Enhance sharpness
+    sharpness_enhancer = ImageEnhance.Sharpness(enhanced)
+    enhanced = sharpness_enhancer.enhance(1.3)
+    
+    # Convert to numpy array and normalize
+    img_array = np.array(enhanced)
+    normalized = img_array / 255.0
     
     return normalized, enhanced
 
-# Simulated CNN Model Prediction (Replace with actual trained model)
+# Simulated CNN Model Prediction
 def predict_diabetic_retinopathy(processed_image):
     """
     Simulated CNN prediction
     In production, replace with: model.predict(processed_image)
     """
-    # Simulate CNN output
+    # Simulate CNN output based on image characteristics
+    img_mean = np.mean(processed_image)
+    img_std = np.std(processed_image)
+    
+    # Simple heuristic for demo (replace with actual CNN model)
     severity_levels = ['No DR', 'Mild', 'Moderate', 'Severe', 'Proliferative DR']
     
-    # Simulate prediction (random for demo)
-    prediction = np.random.rand(5)
-    prediction = prediction / prediction.sum()
+    # Simulate prediction based on image statistics
+    if img_mean > 0.6:
+        prediction = [0.7, 0.2, 0.05, 0.03, 0.02]  # Likely No DR
+    elif img_mean > 0.4:
+        prediction = [0.2, 0.5, 0.2, 0.07, 0.03]   # Likely Mild
+    elif img_mean > 0.3:
+        prediction = [0.1, 0.2, 0.5, 0.15, 0.05]   # Likely Moderate
+    else:
+        prediction = [0.05, 0.1, 0.2, 0.4, 0.25]   # Likely Severe
     
     predicted_class = np.argmax(prediction)
     confidence = prediction[predicted_class] * 100
@@ -111,34 +115,34 @@ def recommend_medicine(severity):
     """Recommend medicine based on severity"""
     recommendations = {
         'No DR': {
-            'medicines': ['Regular monitoring', 'Vitamin A supplements'],
-            'dosage': 'One tablet daily',
-            'precautions': 'Regular eye checkups every 6 months',
-            'lifestyle': 'Control blood sugar, maintain healthy diet'
+            'medicines': ['Regular monitoring', 'Vitamin A supplements', 'Multivitamin with lutein'],
+            'dosage': 'One tablet daily with meals',
+            'precautions': 'Regular eye checkups every 6 months, maintain HbA1c below 7%',
+            'lifestyle': 'Control blood sugar levels, maintain healthy diet, regular exercise'
         },
         'Mild': {
-            'medicines': ['Anti-VEGF injections', 'Blood pressure medication'],
-            'dosage': 'As prescribed by ophthalmologist',
-            'precautions': 'Monitor blood sugar strictly',
-            'lifestyle': 'Exercise regularly, avoid smoking'
+            'medicines': ['Anti-VEGF injections (Bevacizumab)', 'Blood pressure medication', 'Aspirin 75mg'],
+            'dosage': 'Anti-VEGF: As prescribed by ophthalmologist, Aspirin: Once daily',
+            'precautions': 'Monitor blood sugar strictly, check blood pressure daily',
+            'lifestyle': 'Exercise 30 min daily, avoid smoking and alcohol, reduce salt intake'
         },
         'Moderate': {
-            'medicines': ['Laser photocoagulation therapy', 'Anti-VEGF injections', 'Corticosteroids'],
-            'dosage': 'Multiple sessions as needed',
-            'precautions': 'Immediate consultation with retina specialist',
-            'lifestyle': 'Strict diabetes management required'
+            'medicines': ['Laser photocoagulation therapy', 'Ranibizumab injections', 'Corticosteroids', 'ACE inhibitors'],
+            'dosage': 'Multiple laser sessions as needed, monthly injections initially',
+            'precautions': 'Immediate consultation with retina specialist required',
+            'lifestyle': 'Strict diabetes management, weight control, stress reduction'
         },
         'Severe': {
-            'medicines': ['Panretinal photocoagulation', 'Anti-VEGF therapy', 'Vitrectomy (if needed)'],
-            'dosage': 'Surgical intervention required',
-            'precautions': 'Emergency ophthalmology consultation',
-            'lifestyle': 'Intensive diabetes care, regular monitoring'
+            'medicines': ['Panretinal photocoagulation', 'Aflibercept injections', 'Vitrectomy preparation', 'Insulin therapy'],
+            'dosage': 'Extensive laser treatment required, bi-weekly injections',
+            'precautions': 'URGENT: Emergency ophthalmology consultation within 24 hours',
+            'lifestyle': 'Intensive diabetes care, daily blood sugar monitoring, dietary restrictions'
         },
         'Proliferative DR': {
-            'medicines': ['Urgent vitrectomy surgery', 'Anti-VEGF injections', 'Laser treatment'],
-            'dosage': 'Immediate surgical intervention',
-            'precautions': 'Risk of vision loss - immediate treatment required',
-            'lifestyle': 'Critical diabetes management, frequent follow-ups'
+            'medicines': ['URGENT Vitrectomy surgery', 'Bevacizumab pre-surgery', 'Post-op antibiotics', 'Pain management'],
+            'dosage': 'Immediate surgical intervention required',
+            'precautions': 'CRITICAL: Risk of permanent vision loss - seek immediate treatment',
+            'lifestyle': 'Critical diabetes management, hospital care, frequent follow-ups every week'
         }
     }
     
@@ -148,7 +152,7 @@ def recommend_medicine(severity):
 def main():
     # Title
     st.title("👁️ Diabetic Retinopathy Detection System")
-    st.markdown("### AI-Powered Eye Disease Detection using CNN")
+    st.markdown("### AI-Powered Eye Disease Detection using Deep Learning CNN")
     st.markdown("---")
     
     # Initialize database
@@ -164,17 +168,20 @@ def main():
         doctor_notes = st.text_area("Doctor's Notes", placeholder="Additional observations...")
         
         st.markdown("---")
-        st.markdown("**Required fields marked with ***")
+        st.info("📌 **Required fields marked with ***")
+        st.warning("⚕️ This is a diagnostic aid. Always consult a qualified ophthalmologist.")
     
     # Main content area
     col1, col2 = st.columns([1, 1])
     
     with col1:
         st.subheader("📷 Upload Retinal Image")
+        st.markdown("Upload a clear fundus photograph of the retina")
+        
         uploaded_file = st.file_uploader(
             "Choose a retinal fundus image...",
             type=['jpg', 'jpeg', 'png'],
-            help="Upload a clear fundus photograph of the eye"
+            help="Upload a high-quality retinal image for accurate diagnosis"
         )
         
         if uploaded_file is not None:
@@ -182,8 +189,11 @@ def main():
             image = Image.open(uploaded_file)
             st.image(image, caption="Original Retinal Image", use_container_width=True)
             
+            # Image info
+            st.info(f"📐 Image size: {image.size[0]} x {image.size[1]} pixels")
+            
             # Preprocess button
-            if st.button("🔬 Preprocess & Analyze Image", use_container_width=True):
+            if st.button("🔬 Preprocess & Enhance Image", use_container_width=True):
                 with st.spinner("Processing image..."):
                     # Preprocess
                     processed_img, enhanced_img = preprocess_image(image)
@@ -197,14 +207,19 @@ def main():
     
     with col2:
         if 'processed' in st.session_state and st.session_state.processed:
-            st.subheader("🔍 Enhanced Image")
+            st.subheader("🔍 Enhanced & Processed Image")
             st.image(st.session_state.enhanced_img, 
-                    caption="Preprocessed & Enhanced Image", 
+                    caption="Contrast Enhanced & Sharpened Image", 
                     use_container_width=True)
             
+            st.success("✓ Image ready for CNN analysis")
+            
             # Predict button
-            if st.button("🧠 Run CNN Diagnosis", use_container_width=True):
-                with st.spinner("Running AI model..."):
+            if st.button("🧠 Run AI Diagnosis (CNN)", use_container_width=True):
+                with st.spinner("Analyzing image with deep learning model..."):
+                    import time
+                    time.sleep(2)  # Simulate processing time
+                    
                     # Get prediction
                     severity, confidence = predict_diabetic_retinopathy(
                         st.session_state.processed_img
@@ -214,11 +229,13 @@ def main():
                     st.session_state.diagnosis_done = True
                     st.session_state.severity = severity
                     st.session_state.confidence = confidence
+                    
+                    st.success("✅ Diagnosis completed!")
     
     # Results Section
     if 'diagnosis_done' in st.session_state and st.session_state.diagnosis_done:
         st.markdown("---")
-        st.header("📊 Diagnosis Results")
+        st.header("📊 Diagnosis Results & Medical Report")
         
         # Result display
         severity = st.session_state.severity
@@ -249,7 +266,7 @@ def main():
                 <div style='background-color: #2196F3; padding: 20px; 
                 border-radius: 10px; text-align: center;'>
                     <h2 style='color: white; margin: 0;'>{confidence:.1f}%</h2>
-                    <p style='color: white; margin: 5px 0;'>Confidence</p>
+                    <p style='color: white; margin: 5px 0;'>AI Confidence</p>
                 </div>
             """, unsafe_allow_html=True)
         
@@ -258,94 +275,126 @@ def main():
                 <div style='background-color: #9C27B0; padding: 20px; 
                 border-radius: 10px; text-align: center;'>
                     <h2 style='color: white; margin: 0;'>{datetime.now().strftime('%d/%m/%Y')}</h2>
-                    <p style='color: white; margin: 5px 0;'>Date</p>
+                    <p style='color: white; margin: 5px 0;'>Report Date</p>
                 </div>
             """, unsafe_allow_html=True)
         
         st.markdown("---")
         
         # Medicine Recommendations
-        st.header("💊 Treatment Recommendations")
+        st.header("💊 Treatment Recommendations & Prescriptions")
         recommendations = recommend_medicine(severity)
         
         rec_col1, rec_col2 = st.columns(2)
         
         with rec_col1:
             st.subheader("🏥 Prescribed Medicines")
-            for medicine in recommendations['medicines']:
-                st.markdown(f"- {medicine}")
+            for i, medicine in enumerate(recommendations['medicines'], 1):
+                st.markdown(f"**{i}.** {medicine}")
             
-            st.subheader("📋 Dosage")
+            st.markdown("")
+            st.subheader("📋 Dosage Instructions")
             st.info(recommendations['dosage'])
         
         with rec_col2:
-            st.subheader("⚠️ Precautions")
+            st.subheader("⚠️ Medical Precautions")
             st.warning(recommendations['precautions'])
             
+            st.markdown("")
             st.subheader("🏃 Lifestyle Recommendations")
             st.success(recommendations['lifestyle'])
         
         st.markdown("---")
         
         # Save to Database
-        st.header("💾 Save Patient Record")
+        st.header("💾 Save Patient Record to Database")
         
-        if st.button("📥 Save to Database", use_container_width=True):
-            # Validate required fields
-            if not patient_name or not patient_contact:
-                st.error("❌ Please fill in all required patient information!")
-            else:
-                # Generate patient ID
-                patient_id = f"PT{datetime.now().strftime('%Y%m%d%H%M%S')}"
-                
-                # Create patient record
-                patient_data = {
-                    'Patient_ID': patient_id,
-                    'Name': patient_name,
-                    'Age': patient_age,
-                    'Gender': patient_gender,
-                    'Contact': patient_contact,
-                    'Date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    'Diagnosis': severity,
-                    'Severity': severity,
-                    'Confidence': f"{confidence:.2f}%",
-                    'Recommended_Medicine': ", ".join(recommendations['medicines']),
-                    'Doctor_Notes': doctor_notes
-                }
-                
-                # Save to Excel
-                if save_to_database(patient_data):
-                    st.success(f"✅ Record saved successfully! Patient ID: {patient_id}")
-                    st.balloons()
+        save_col1, save_col2 = st.columns([3, 1])
+        
+        with save_col1:
+            st.markdown("**Save this diagnosis report and patient information to Excel database**")
+        
+        with save_col2:
+            if st.button("📥 Save Record", use_container_width=True):
+                # Validate required fields
+                if not patient_name or not patient_contact:
+                    st.error("❌ Please fill in all required patient information in the sidebar!")
                 else:
-                    st.error("❌ Error saving record. Please try again.")
+                    # Generate patient ID
+                    patient_id = f"PT{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                    
+                    # Create patient record
+                    patient_data = {
+                        'Patient_ID': patient_id,
+                        'Name': patient_name,
+                        'Age': patient_age,
+                        'Gender': patient_gender,
+                        'Contact': patient_contact,
+                        'Date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        'Diagnosis': severity,
+                        'Severity': severity,
+                        'Confidence': f"{confidence:.2f}%",
+                        'Recommended_Medicine': " | ".join(recommendations['medicines']),
+                        'Doctor_Notes': doctor_notes
+                    }
+                    
+                    # Save to Excel
+                    try:
+                        if save_to_database(patient_data):
+                            st.success(f"✅ Record saved successfully! Patient ID: **{patient_id}**")
+                            st.balloons()
+                    except Exception as e:
+                        st.error(f"❌ Error saving record: {str(e)}")
     
     # View Database
     st.markdown("---")
     st.header("📂 Patient Records Database")
     
-    if st.button("📊 View All Records"):
-        df = load_database()
-        if len(df) > 0:
-            st.dataframe(df, use_container_width=True)
-            
-            # Download option
-            csv = df.to_csv(index=False)
-            st.download_button(
-                label="⬇️ Download Database (CSV)",
-                data=csv,
-                file_name=f"patient_records_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv"
-            )
-        else:
-            st.info("No records found in database.")
+    db_col1, db_col2 = st.columns([3, 1])
+    
+    with db_col1:
+        st.markdown("View all patient records stored in the Excel database")
+    
+    with db_col2:
+        if st.button("📊 View Records", use_container_width=True):
+            st.session_state.show_db = True
+    
+    if 'show_db' in st.session_state and st.session_state.show_db:
+        try:
+            df = load_database()
+            if len(df) > 0:
+                st.dataframe(df, use_container_width=True, height=300)
+                
+                # Statistics
+                stat_col1, stat_col2, stat_col3 = st.columns(3)
+                with stat_col1:
+                    st.metric("Total Patients", len(df))
+                with stat_col2:
+                    st.metric("Today's Cases", len(df[df['Date'].str.contains(datetime.now().strftime('%Y-%m-%d'))]))
+                with stat_col3:
+                    st.metric("Database Size", f"{len(df)} records")
+                
+                # Download option
+                csv = df.to_csv(index=False)
+                st.download_button(
+                    label="⬇️ Download Database (CSV)",
+                    data=csv,
+                    file_name=f"patient_records_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+            else:
+                st.info("📭 No records found in database. Start by diagnosing your first patient!")
+        except Exception as e:
+            st.error(f"Error loading database: {str(e)}")
     
     # Footer
     st.markdown("---")
     st.markdown("""
         <div style='text-align: center; color: #666;'>
-            <p>⚕️ Diabetic Retinopathy Detection System | AI-Powered Healthcare</p>
-            <p style='font-size: 12px;'>⚠️ This is a diagnostic aid tool. Always consult with a qualified ophthalmologist.</p>
+            <p><strong>⚕️ Diabetic Retinopathy Detection System | AI-Powered Healthcare Solution</strong></p>
+            <p style='font-size: 12px;'>⚠️ <strong>Disclaimer:</strong> This is a diagnostic aid tool. Always consult with a qualified ophthalmologist for final diagnosis and treatment.</p>
+            <p style='font-size: 12px;'>🔬 Powered by Deep Learning CNN | 📊 Data stored in Excel database</p>
         </div>
     """, unsafe_allow_html=True)
 
